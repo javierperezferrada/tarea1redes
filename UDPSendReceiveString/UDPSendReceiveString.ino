@@ -17,15 +17,15 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>         // UDP library from: bjoern@cs.stanford.edu 12/30/2008
 
-
+#define UDP_TX_PACKET_MAX_SIZE 860 //increase UDP size
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
-IPAddress ip(192, 168, 1, 177);
+IPAddress ip(192, 168, 1, 10);
 
-unsigned int localPort = 8888;      // local port to listen on
+unsigned int localPort = 69;      // local port to listen on
 
 // buffers for receiving and sending data
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];  //buffer to hold incoming packet,
@@ -60,10 +60,14 @@ void loop() {
     Serial.println(Udp.remotePort());
 
     // read the packet into packetBufffer
-    Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
+    Udp.read(packetBuffer, 18);
     Serial.println("Contents:");
-    Serial.println(packetBuffer);
-
+    Serial.print((int)packetBuffer[0]);
+    Serial.print((int)packetBuffer[1]);
+    for(int i=2;i<packetSize;i++){
+      Serial.print(packetBuffer[i]);
+    }
+    Serial.println("");
     // send a reply to the IP address and port that sent us the packet we received
     Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
     Udp.write(ReplyBuffer);
