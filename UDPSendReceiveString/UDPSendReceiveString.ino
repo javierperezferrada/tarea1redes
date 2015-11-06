@@ -1,23 +1,12 @@
-/*
- UDPSendReceiveString:
- This sketch receives UDP message strings, prints them to the serial port
- and sends an "acknowledge" string back to the sender
-
- A Processing sketch is included at the end of file that can be used to send
- and received messages for testing with a computer.
-
- created 21 Aug 2010
- by Michael Margolis
-
- This code is in the public domain.
- */
-
-
+// tftp 192.168.1.10 -c get test.txt
 #include <SPI.h>         // needed for Arduino versions later than 0018
 #include <Ethernet.h>
 #include <EthernetUdp.h>         // UDP library from: bjoern@cs.stanford.edu 12/30/2008
+#include <SD.h>
+ 
+File Archivo;
+int l_nombre;
 
-#define UDP_TX_PACKET_MAX_SIZE 860 //increase UDP size
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
 byte mac[] = {
@@ -38,14 +27,29 @@ void setup() {
   // start the Ethernet and UDP:
   Ethernet.begin(mac, ip);
   Udp.begin(localPort);
-
   Serial.begin(9600);
+  //Se muestra por pantalla que se va a iniciar la comunicación con la SD
+  Serial.print("Comenzando la comunicación con la tarjeta SD");
+  
+  //Se establece como salida el pin correspondiente a SS.
+  pinMode(4, OUTPUT);
+  
+  //Se muestra por el monitor si la comunicación se ha establecido correctamente
+  //o ha habido algún tipo de error.
+  if (!SD.begin(4)){
+    
+    Serial.println("Se ha producido un fallo al iniciar la comunicación");
+    return;
+  }
+  Serial.println("Se ha iniciado la comunicación correctamente");
+  
 }
 
 void loop() {
   // if there's data available, read a packet
   int packetSize = Udp.parsePacket();
   if (packetSize) {
+    l_nombre = packetSize;
     Serial.print("Received packet of size ");
     Serial.println(packetSize);
     Serial.print("From ");
@@ -60,13 +64,51 @@ void loop() {
     Serial.println(Udp.remotePort());
 
     // read the packet into packetBufffer
-    Udp.read(packetBuffer, 18);
-    Serial.println("Contents:");
-    Serial.print((int)packetBuffer[0]);
-    Serial.print((int)packetBuffer[1]);
-    for(int i=2;i<packetSize;i++){
-      Serial.print(packetBuffer[i]);
+    Udp.read(packetBuffer, packetSize);
+    Serial.println("archivo requerido:");
+
+    //almacena el nombre del archivo
+    for(int i=2;i<l_nombre;i++){
+      if(packetBuffer[i+1]==0){
+        l_nombre = i-1;
+        String nombre_archivo = String("");
+        for(int j=2;j<l_nombre+2;j++){
+          nombre_archivo = String(nombre_archivo + packetBuffer[j]);
+        }
+        Serial.println(nombre_archivo);
+        //Se vuelve a abrir el fichero, esta vez para leer los datos escritos.
+        Archivo = SD.open(nombre_archivo);
+        
+        //Si el archivo se ha abierto correctamente se muestran los datos.
+        if (Archivo){
+          
+          //Se muestra por el monitor que la información que va a aparecer es la del
+          //archivo datos.txt.
+          Serial.println("Información contenida en archivo");
+          
+          //Se implementa un bucle que recorrerá el archivo hasta que no encuentre más
+          //información (Archivo.available()==FALSE).
+      
+          while (Archivo.available()){
+            
+           //Se escribe la información que ha sido leída del archivo.
+           Serial.write(Archivo.read());
+          }
+          
+          
+          //Si todo ha ido bien cierra el archivo para no perder datos.
+          Archivo.close();
+        }//fin if archivo
+        
+        //En caso de que haya habido problemas abriendo datos.txt, se muestra por pantalla.
+        else{
+       
+          Serial.println("El archivo no se abrió correctamente");
+        }
+
+      }
     }
+    
     Serial.println("");
     // send a reply to the IP address and port that sent us the packet we received
     Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
@@ -76,43 +118,3 @@ void loop() {
   delay(10);
 }
 
-
-/*
-  Processing sketch to run with this example
- =====================================================
-
- // Processing UDP example to send and receive string data from Arduino
- // press any key to send the "Hello Arduino" message
-
-
- import hypermedia.net.*;
-
- UDP udp;  // define the UDP object
-
-
- void setup() {
- udp = new UDP( this, 6000 );  // create a new datagram connection on port 6000
- //udp.log( true );         // <-- printout the connection activity
- udp.listen( true );           // and wait for incoming message
- }
-
- void draw()
- {
- }
-
- void keyPressed() {
- String ip       = "192.168.1.177"; // the remote IP address
- int port        = 8888;        // the destination port
-
- udp.send("Hello World", ip, port );   // the message to send
-
- }
-
- void receive( byte[] data ) {          // <-- default handler
- //void receive( byte[] data, String ip, int port ) {   // <-- extended handler
-
- for(int i=0; i < data.length; i++)
- print(char(data[i]));
- println();
- }
- */
