@@ -5,10 +5,7 @@
 #include <SD.h>
  
 File Archivo;
-int l_nombre;
 
-// Enter a MAC address and IP address for your controller below.
-// The IP address will be dependent on your local network:
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
@@ -42,14 +39,12 @@ void setup() {
     return;
   }
   Serial.println("Se ha iniciado la comunicación correctamente");
-  
-}
+}//fin setup
 
 void loop() {
   // if there's data available, read a packet
   int packetSize = Udp.parsePacket();
   if (packetSize) {
-    l_nombre = packetSize;
     Serial.print("Received packet of size ");
     Serial.println(packetSize);
     Serial.print("From ");
@@ -65,50 +60,79 @@ void loop() {
 
     // read the packet into packetBufffer
     Udp.read(packetBuffer, packetSize);
-    Serial.println("archivo requerido:");
 
-    String nom_arch=get_nombre_archivo(&packetBuffer[0],packetSize);
+//opcode 01
+    int largo = get_largo_nombre(&packetBuffer[2],packetSize);
+    Serial.println(largo);
+    char nom_arch[largo-1];
+    get_nombre_a(&nom_arch[0],&packetBuffer[2],largo);
+    String nom=(String)nom_arch;
+    Archivo = SD.open(nom);
+    int tamano = Archivo.size();
+    Serial.println(tamano);
+    if(tamano<512){
+      //envio archivo completo;
+      int total = tamano + 4;
+      char paquete[total];
+      paquete[0]=0;
+      paquete[1]=3;
+      paquete[2]=0;
+      paquete[3]=0;
+      int aux = 4;
+      while (Archivo.available()){ 
+        paquete[aux]= Archivo.read();
+        aux+=1;
+      }
+      Archivo.close();
+      for(int i=0;i<total;i++){
+        Serial.print(paquete[i]);
+      }
+      // send a reply to the IP address and port that sent us the packet we received
+      Serial.print("Tamaño de la respuesta ");
+    Serial.println(total);
+    Serial.print("hacia ");
+    IPAddress remote = Udp.remoteIP();
+    for (int i = 0; i < 4; i++) {
+      Serial.print(remote[i], DEC);
+      if (i < 3) {
+        Serial.print(".");
+      }
+    }
+    Serial.print(", port ");
+    Serial.println(Udp.remotePort());
     
-        //Se vuelve a abrir el fichero, esta vez para leer los datos escritos.
-        Archivo = SD.open(nom_arch);
-        
-        //Si el archivo se ha abierto correctamente se muestran los datos.
-        if (Archivo){
-          
-          //Se muestra por el monitor que la información que va a aparecer es la del
-          //archivo datos.txt.
-          Serial.println("Información contenida en archivo");
-          
-          //Se implementa un bucle que recorrerá el archivo hasta que no encuentre más
-          //información (Archivo.available()==FALSE).
+      Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+      Udp.write(paquete);
+      Serial.println("paquete enviado");
+      Udp.endPacket();
+    }
+    else{
+      //divido archivo y envio paquete 1
+    }
       
-          while (Archivo.available()){
-            
-           //Se escribe la información que ha sido leída del archivo.
-           Serial.write(Archivo.read());
-          }
-          
-          
-          //Si todo ha ido bien cierra el archivo para no perder datos.
-          Archivo.close();
-        }//fin if archivo
-        
-        //En caso de que haya habido problemas abriendo datos.txt, se muestra por pantalla.
-        else{
-       
-          Serial.println("El archivo no se abrió correctamente");
-        }
-
-
-    
-    Serial.println("");
-    // send a reply to the IP address and port that sent us the packet we received
-    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-    Udp.write(ReplyBuffer);
-    Udp.endPacket();
   }
   delay(10);
 }//fin loop
+
+void readRequest(){
+  
+}//fin readRequest
+int get_largo_nombre(char *packetBuffer, int l_nombre){
+  for(int i=0;i<l_nombre;i++){
+      if(packetBuffer[i+1]==0){
+        int largo_nombre = i+1;
+        return largo_nombre;
+      }
+  }
+}
+  
+void get_nombre_a(char *nombre,char *packetBuffer, int l_nombre){
+  for(int i=0;i<l_nombre;i++){
+        for(int j=0;j<l_nombre;j++){
+          nombre[j] = packetBuffer[j];
+        }
+  }
+}
 
 String get_nombre_archivo(char *packetBuffer, int l_nombre){
   for(int i=2;i<l_nombre;i++){
