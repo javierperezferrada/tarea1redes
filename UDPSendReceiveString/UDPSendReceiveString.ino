@@ -60,6 +60,9 @@ void loop() {
 
     // read the packet into packetBufffer
     Udp.read(packetBuffer, packetSize);
+    for(int i=0;i<packetSize;i++){
+      Serial.print(packetBuffer[i]);
+    }
 
 //opcode 01
     int largo = get_largo_nombre(&packetBuffer[2],packetSize);
@@ -77,7 +80,7 @@ void loop() {
       paquete[0]=0;
       paquete[1]=3;
       paquete[2]=0;
-      paquete[3]=0;
+      paquete[3]=1;
       int aux = 4;
       while (Archivo.available()){ 
         paquete[aux]= Archivo.read();
@@ -102,9 +105,10 @@ void loop() {
     Serial.println(Udp.remotePort());
     
       Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-      Udp.write(paquete);
-      Serial.println("paquete enviado");
+      Udp.write(paquete,total);
       Udp.endPacket();
+      Serial.println("paquete enviado");
+      
     }
     else{
       //divido archivo y envio paquete 1
