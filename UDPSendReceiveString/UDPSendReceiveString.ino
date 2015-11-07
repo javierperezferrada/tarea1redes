@@ -67,17 +67,10 @@ void loop() {
     Udp.read(packetBuffer, packetSize);
     Serial.println("archivo requerido:");
 
-    //almacena el nombre del archivo
-    for(int i=2;i<l_nombre;i++){
-      if(packetBuffer[i+1]==0){
-        l_nombre = i-1;
-        String nombre_archivo = String("");
-        for(int j=2;j<l_nombre+2;j++){
-          nombre_archivo = String(nombre_archivo + packetBuffer[j]);
-        }
-        Serial.println(nombre_archivo);
+    String nom_arch=get_nombre_archivo(&packetBuffer[0],packetSize);
+    
         //Se vuelve a abrir el fichero, esta vez para leer los datos escritos.
-        Archivo = SD.open(nombre_archivo);
+        Archivo = SD.open(nom_arch);
         
         //Si el archivo se ha abierto correctamente se muestran los datos.
         if (Archivo){
@@ -106,8 +99,7 @@ void loop() {
           Serial.println("El archivo no se abrió correctamente");
         }
 
-      }
-    }
+
     
     Serial.println("");
     // send a reply to the IP address and port that sent us the packet we received
@@ -116,5 +108,19 @@ void loop() {
     Udp.endPacket();
   }
   delay(10);
-}
+}//fin loop
+
+String get_nombre_archivo(char *packetBuffer, int l_nombre){
+  for(int i=2;i<l_nombre;i++){
+      if(packetBuffer[i+1]==0){
+        l_nombre = i-1;
+        String nombre_archivo = String("");
+        for(int j=2;j<l_nombre+2;j++){
+          nombre_archivo = String(nombre_archivo + packetBuffer[j]);
+        }
+        Serial.println(nombre_archivo);
+        return nombre_archivo;
+      }
+  }
+}//fin get_nombre_archivo
 
