@@ -26,7 +26,7 @@ void setup() {
   Udp.begin(localPort);
   Serial.begin(9600);
   //Se muestra por pantalla que se va a iniciar la comunicación con la SD
-  Serial.print("Comenzando la comunicación con la tarjeta SD");
+
   
   //Se establece como salida el pin correspondiente a SS.
   pinMode(4, OUTPUT);
@@ -38,105 +38,91 @@ void setup() {
     Serial.println("Se ha producido un fallo al iniciar la comunicación");
     return;
   }
-  Serial.println("Se ha iniciado la comunicación correctamente");
 }//fin setup
 
 void loop() {
   // if there's data available, read a packet
   int packetSize = Udp.parsePacket();
   if (packetSize) {
-    Serial.print("Received packet of size ");
-    Serial.println(packetSize);
-    Serial.print("From ");
-    IPAddress remote = Udp.remoteIP();
-    for (int i = 0; i < 4; i++) {
-      Serial.print(remote[i], DEC);
-      if (i < 3) {
-        Serial.print(".");
-      }
-    }
-    Serial.print(", port ");
-    Serial.println(Udp.remotePort());
 
+    IPAddress remote = Udp.remoteIP();
+ 
     // read the packet into packetBufffer
     Udp.read(packetBuffer, packetSize);
-    for(int i=0;i<packetSize;i++){
-      Serial.print(packetBuffer[i]);
-    }
 
-//opcode 01
-    int largo = get_largo_nombre(&packetBuffer[2],packetSize);
-    Serial.println(largo);
-    char nom_arch[largo-1];
-    get_nombre_a(&nom_arch[0],&packetBuffer[2],largo);
-    String nom=(String)nom_arch;
-    Archivo = SD.open(nom);
-    int tamano = Archivo.size();
-    Serial.println(tamano);
-    if(tamano<512){
-      //envio archivo completo;
-      int total = tamano + 4;
+    int opcode = (int)packetBuffer[1];
+    switch(opcode){
+    //opcode 01
+      case 1:
+      {
+        String nom_arch=get_nombre_archivo(&packetBuffer[0],packetSize);
+        Serial.println(nom_arch);
+        Archivo = SD.open(nom_arch);
+        int tamano = Archivo.size();
+        Serial.println(tamano);
+        if(tamano<512){
+          //envio archivo completo;
+          resto(tamano,&Archivo, &Udp);
+        }
+        else{
+          //divido archivo y envio paquetes
+          int q_paquete = (tamano/512);
+          int orden = 1;
+          for(int i=0;i<q_paquete;i++){
+            char paquete[512];
+            paquete[0]=0;
+            paquete[1]=3;
+            paquete[2]=0;
+            paquete[3]=orden;
+            int aux=4;
+            while (Archivo.available() and aux<516){ 
+              paquete[aux]= Archivo.read();
+              aux++;
+            }
+            Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+            Udp.write(paquete,516);
+            Udp.endPacket();  
+            orden++;
+          }
+        }
+      }
+        break;
+      case 2:
+       //write request
+        break;
+     case 3:
+       //data
+        break;
+     case 4:
+       //acknowledgment
+        break;
+     case 5:
+       //Error
+     break;
+    }
+  }//fin if packetSize
+  delay(10);
+}//fin loop
+
+void resto(int total,File *archivo,EthernetUDP *udp){
+      total = total + 4;
+      Serial.println(total);
       char paquete[total];
       paquete[0]=0;
       paquete[1]=3;
       paquete[2]=0;
       paquete[3]=1;
       int aux = 4;
-      while (Archivo.available()){ 
-        paquete[aux]= Archivo.read();
+      while (archivo->available()){ 
+        paquete[aux]= archivo->read();
         aux+=1;
       }
-      Archivo.close();
-      for(int i=0;i<total;i++){
-        Serial.print(paquete[i]);
-      }
-      // send a reply to the IP address and port that sent us the packet we received
-      Serial.print("Tamaño de la respuesta ");
-    Serial.println(total);
-    Serial.print("hacia ");
-    IPAddress remote = Udp.remoteIP();
-    for (int i = 0; i < 4; i++) {
-      Serial.print(remote[i], DEC);
-      if (i < 3) {
-        Serial.print(".");
-      }
-    }
-    Serial.print(", port ");
-    Serial.println(Udp.remotePort());
-    
-      Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-      Udp.write(paquete,total);
-      Udp.endPacket();
-      Serial.println("paquete enviado");
-      
-    }
-    else{
-      //divido archivo y envio paquete 1
-    }
-      
-  }
-  delay(10);
-}//fin loop
+      archivo->close();
+      udp->beginPacket(udp->remoteIP(), udp->remotePort());
+      udp->write(paquete,total);
+      udp->endPacket();  
+}
 
-void readRequest(){
-  
-}//fin readRequest
-int get_largo_nombre(char *packetBuffer, int l_nombre){
-  for(int i=0;i<l_nombre;i++){
-      if(packetBuffer[i+1]==0){
-        int largo_nombre = i+1;
-        return largo_nombre;
-      }
-  }
-}
-  
-void get_nombre_a(char *nombre,char *packetBuffer, int l_nombre){
-  for(int i=0;i<l_nombre;i++){
-        for(int j=0;j<l_nombre;j++){
-          nombre[j] = packetBuffer[j];
-        }
-  }
-}
 
 String get_nombre_archivo(char *packetBuffer, int l_nombre){
   for(int i=2;i<l_nombre;i++){
@@ -146,7 +132,6 @@ String get_nombre_archivo(char *packetBuffer, int l_nombre){
         for(int j=2;j<l_nombre+2;j++){
           nombre_archivo = String(nombre_archivo + packetBuffer[j]);
         }
-        Serial.println(nombre_archivo);
         return nombre_archivo;
       }
   }
