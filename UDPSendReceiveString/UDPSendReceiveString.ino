@@ -1,23 +1,16 @@
-// tftp 192.168.1.10 -c get test.txt
+//  
 #include <SPI.h>         // needed for Arduino versions later than 0018
 #include <Ethernet.h>
 #include <EthernetUdp.h>         // UDP library from: bjoern@cs.stanford.edu 12/30/2008
 #include <SD.h>
  
 File Archivo;
-
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
 IPAddress ip(192, 168, 1, 10);
-
 unsigned int localPort = 69;      // local port to listen on
-
-// buffers for receiving and sending data
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];  //buffer to hold incoming packet,
-char  ReplyBuffer[] = "acknowledged";       // a string to send back
-
-// An EthernetUDP instance to let us send and receive packets over UDP
 EthernetUDP Udp;
 
 void setup() {
@@ -25,65 +18,30 @@ void setup() {
   Ethernet.begin(mac, ip);
   Udp.begin(localPort);
   Serial.begin(9600);
-  //Se muestra por pantalla que se va a iniciar la comunicación con la SD
-
-  
-  //Se establece como salida el pin correspondiente a SS.
   pinMode(4, OUTPUT);
-  
-  //Se muestra por el monitor si la comunicación se ha establecido correctamente
-  //o ha habido algún tipo de error.
-  if (!SD.begin(4)){
-    
+  if (!SD.begin(4)){    
     Serial.println("Se ha producido un fallo al iniciar la comunicación");
     return;
   }
 }//fin setup
 
 void loop() {
-  // if there's data available, read a packet
   int packetSize = Udp.parsePacket();
   if (packetSize) {
-
-    IPAddress remote = Udp.remoteIP();
- 
-    // read the packet into packetBufffer
     Udp.read(packetBuffer, packetSize);
-
     int opcode = (int)packetBuffer[1];
     switch(opcode){
-    //opcode 01
+      //receptor
       case 1:
       {
         String nom_arch=get_nombre_archivo(&packetBuffer[0],packetSize);
         Serial.println(nom_arch);
         Archivo = SD.open(nom_arch);
-        int tamano = Archivo.size();
-        Serial.println(tamano);
-        if(tamano<512){
-          //envio archivo completo;
-          resto(tamano,&Archivo, &Udp);
+        if(Archivo.available()<512){
+          envia_resto(Archivo.available(),&Archivo, &Udp,1);
         }
         else{
-          //divido archivo y envio paquetes
-          int q_paquete = (tamano/512);
-          int orden = 1;
-          for(int i=0;i<q_paquete;i++){
-            char paquete[512];
-            paquete[0]=0;
-            paquete[1]=3;
-            paquete[2]=0;
-            paquete[3]=orden;
-            int aux=4;
-            while (Archivo.available() and aux<516){ 
-              paquete[aux]= Archivo.read();
-              aux++;
-            }
-            Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-            Udp.write(paquete,516);
-            Udp.endPacket();  
-            orden++;
-          }
+          envia_bloque(&Archivo,&Udp,1);
         }
       }
         break;
@@ -94,24 +52,51 @@ void loop() {
        //data
         break;
      case 4:
-       //acknowledgment
+       {
+        int orden = packetBuffer[3];
+        Serial.println(orden); 
+        envia_archivo(&Archivo,&Udp, orden+1);
+       }
         break;
      case 5:
        //Error
      break;
-    }
+    }//fin switch
   }//fin if packetSize
   delay(10);
 }//fin loop
 
-void resto(int total,File *archivo,EthernetUDP *udp){
+void envia_archivo(File *archivo,EthernetUDP *udp, int aux){
+  if(archivo->available()<512){
+          envia_resto(archivo->available(),archivo, udp,aux);
+        }
+        else{
+          envia_bloque(archivo,udp,aux);
+        }
+}
+
+void envia_bloque(File *archivo,EthernetUDP *udp, int aux){
+  char bloq[516];
+  bloq[0]=0;
+  bloq[1]=3;
+  bloq[2]=0;
+  bloq[3]=aux;
+  for(int i=4;i<516;i++){
+    bloq[i] = archivo->read();   
+  }
+  udp->beginPacket(udp->remoteIP(), udp->remotePort());
+  udp->write(bloq,516);
+  udp->endPacket();  
+}
+
+void envia_resto(int total,File *archivo,EthernetUDP *udp,int num_block){
+  //funcion que envia el resto del archivo y cierra Archivo.
       total = total + 4;
-      Serial.println(total);
       char paquete[total];
       paquete[0]=0;
       paquete[1]=3;
       paquete[2]=0;
-      paquete[3]=1;
+      paquete[3]=num_block;
       int aux = 4;
       while (archivo->available()){ 
         paquete[aux]= archivo->read();
@@ -123,8 +108,8 @@ void resto(int total,File *archivo,EthernetUDP *udp){
       udp->endPacket();  
 }
 
-
 String get_nombre_archivo(char *packetBuffer, int l_nombre){
+  //Funcion que devuelve el nombre del archivo en RRQ y WRQ.
   for(int i=2;i<l_nombre;i++){
       if(packetBuffer[i+1]==0){
         l_nombre = i-1;
